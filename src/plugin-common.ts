@@ -11,6 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { AgyAdapter } from './adapter/adapter.ts'
 import type { AgyAttachmentStore } from './adapter/adapter.ts'
 import { ClashManager } from './clash/manager.ts'
+import { regionForLocale } from './clash/region.ts'
 import { AGY_PROVIDER } from './adapter/models.ts'
 import { ModelVisibility } from './model-visibility.ts'
 import { MultimodalConfigStore } from './multimodal-config.ts'
@@ -162,7 +163,17 @@ async function buildAgyRuntime(ctx: Context): Promise<AgyRuntime> {
   // Built before the warm-up below: that probe is one of the requests a user
   // asking for "agy through my subscription" expects to move, and it runs before
   // any account exists to carry a proxy.
-  const clash = new ClashManager()
+  // Locale of the active account, read once at boot: the region recommendation
+  // only matters when a core is chosen, and `verify` writes the locale after it.
+  const bootStorage = await store.load()
+  const bootAccount = bootStorage.accounts[bootStorage.activeIndex] ?? bootStorage.accounts[0]
+  const clash = new ClashManager({
+    // The account's own locale is the only location-ish fact the token exposes:
+    // `hi` ⇒ India, `ja` ⇒ Japan. The manager uses it to pick the first node and
+    // as the rotation anchor, so an account never egresses from a country it has
+    // no history in (and never from one the service does not serve).
+    recommendedRegion: () => regionForLocale(bootAccount?.locale),
+  })
   void warmVersionCache(store, () => clash.proxyUrlFor())
   // The persisted recent-activity ring, built FIRST so it seeds from disk
   // before any record can arrive and `pool.recent` shows the other processes'

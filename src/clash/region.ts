@@ -72,3 +72,54 @@ export function isRegionSupported(region: string | undefined): boolean {
 export function isNodeUnsupported(name: string): boolean {
   return !isRegionSupported(regionOfNode(name))
 }
+
+/**
+ * Locale → the region an account probably belongs in.
+ *
+ * Google exposes no location, but `userinfo.locale` is a strong hint (`hi` ⇒
+ * India, `ja` ⇒ Japan). Mapped onto the regions this plugin can name; an
+ * unsupported-or-unknown locale returns undefined and the caller falls back to
+ * whatever the user chose.
+ */
+export function regionForLocale(locale: string | undefined): string | undefined {
+  if (locale === undefined || locale === '') return undefined
+  const language = locale.toLowerCase().split(/[-_]/)[0] ?? ''
+  const region = locale.toUpperCase().split(/[-_]/)[1]
+  // A supported explicit region wins over the language default (en-GB ⇒ GB).
+  if (region !== undefined && region.length === 2 && region !== 'HK' && region !== 'MO'
+    && /^[A-Z]{2}$/.test(region) && !UNSUPPORTED_REGIONS.has(region)) {
+    return region
+  }
+  return LOCALE_TO_REGION[language]
+}
+
+/** Language → the region most accounts with that locale sit in. */
+const LOCALE_TO_REGION: Readonly<Record<string, string>> = {
+  hi: 'IN',
+  bn: 'IN',
+  ta: 'IN',
+  te: 'IN',
+  mr: 'IN',
+  ja: 'JP',
+  ko: 'KR',
+  th: 'TH',
+  vi: 'VN',
+  id: 'ID',
+  ms: 'MY',
+  tl: 'PH',
+  en: 'US',
+  es: 'ES',
+  pt: 'BR',
+  fr: 'FR',
+  de: 'DE',
+  it: 'IT',
+  nl: 'NL',
+  pl: 'PL',
+  tr: 'TR',
+  ar: 'AE',
+  he: 'IL',
+  fa: 'TR', // Iran is not served; Turkey is the nearest served neighbour
+  ru: 'KZ', // Russia is not served; Kazakhstan is the nearest served neighbour
+  uk: 'PL',
+  zh: 'TW', // mainland China and Hong Kong are not served
+}

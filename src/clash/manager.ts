@@ -57,6 +57,12 @@ export interface ClashManagerOptions {
   /** Override the persisted port (tests, or a caller that owns the numbering). */
   mixedPort?: number
   controllerPort?: number
+  /**
+   * Region this account probably belongs in, resolved per call (e.g. from
+   * `userinfo.locale`). Used to pick the FIRST node and as the rotation anchor
+   * when the user has not pinned one.
+   */
+  recommendedRegion?: () => string | undefined
 }
 
 /** Fields the settings panel may change. */
@@ -76,6 +82,7 @@ export class ClashManager {
   private readonly spawnCore: (bin: string, args: string[]) => CoreProcessLike
   private readonly resolveCore: () => Promise<string>
   private readonly now: () => number
+  private readonly recommendedRegion: (() => string | undefined) | undefined
 
   private state: ClashState
   private child: CoreProcessLike | undefined
@@ -106,6 +113,7 @@ export class ClashManager {
     })
     this.resolveCore = options.resolveCore ?? (() => resolveCoreBinary())
     this.now = options.now ?? (() => Date.now())
+    this.recommendedRegion = options.recommendedRegion
     this.state = this.store.load()
     if (options.mixedPort !== undefined) this.state.mixedPort = options.mixedPort
     if (options.controllerPort !== undefined) this.state.controllerPort = options.controllerPort
@@ -232,7 +240,7 @@ export class ClashManager {
       // the migration pattern the community reports before a soft block. The
       // pair to stay inside is the LEARNT region when there is one, otherwise the
       // current node's own region.
-      const region = this.state.region !== '' ? this.state.region : regionOfNode(current.now)
+      const region = (await this.preferredRegion()) ?? regionOfNode(current.now)
       const sameRegion = region === undefined
         ? undefined
         : ranked.find((name) => name !== current.now && regionOfNode(name) === region)
@@ -425,13 +433,28 @@ export class ClashManager {
     throw new Error(`core did not become ready within ${CORE_READY_TIMEOUT_MS}ms${lastError instanceof Error ? ` (${lastError.message})` : ''}`)
   }
 
+  async preferredRegion(): Promise<string | undefined> {
+    // A region the user picked by hand wins; otherwise fall back to the account's
+    // own locale (`userinfo.locale` ⇒ India/Japan/…), which is the only
+    // location-ish fact the token exposes.
+    if (this.state.region !== '') return this.state.region
+    return this.recommendedRegion?.()
+  }
+
   private async applyInitialNode(profile: SubscriptionProfile): Promise<void> {
     const group = pickGroup(profile, this.state.group)
     if (group === undefined) return
     this.state.group = group.name
     const controller = this.controller()
     const live = await controller.group(group.name).catch(() => ({ now: '', all: group.nodes }))
-    const wanted = this.state.node !== '' && live.all.includes(this.state.node) ? this.state.node : (live.all[0] ?? '')
+    const explicit = this.state.node !== '' && live.all.includes(this.state.node) ? this.state.node : undefined
+    const suggested = this.recommendedRegion?.()
+    const suggestedNode = suggested === undefined
+      ? undefined
+      : live.all.find((name) => regionOfNode(name) === suggested)
+    // Preference: the node the user pinned, then the account's own region, then
+    // the provider's first live node.
+    const wanted = explicit ?? suggestedNode ?? (live.all[0] ?? '')
     if (wanted !== '') {
       if (live.now !== wanted) await controller.select(group.name, wanted)
       this.state.node = wanted

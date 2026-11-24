@@ -154,6 +154,16 @@ export interface CachedLimits {
 export interface ManagedAccount {
   id?: string
   email?: string
+  /**
+   * Google's `locale` for this account, as `userinfo` reports it (e.g. `hi`,
+   * `en-US`, `ja`).
+   *
+   * The only location-ish fact an OAuth token exposes, and the basis for
+   * recommending an egress region: an account whose locale is `hi` belongs in
+   * India, so a Hong Kong exit is the wrong zip code. Captured on verify and
+   * import; never sent upstream.
+   */
+  locale?: string
   refresh: string
   projectId?: string
   managedProjectId?: string

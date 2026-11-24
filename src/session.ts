@@ -1422,12 +1422,16 @@ export class AgySessionManager {
         this.emitUsage({ account: key, source: 'verify', ok: false, latencyMs: Date.now() - startedAt })
         return { ok: false, error: `userinfo ${response.status}` }
       }
-      const info = (await response.json()) as { email?: string }
+      const info = (await response.json()) as { email?: string, locale?: string }
       // Credentials are live again — clear any auth-failure disable so the
       // account re-enters rotation without a manual re-import.
       await this.store.mutate((s) => {
         const target = s.accounts[index]
         if (target) {
+          // The locale is the only location-ish fact the token exposes, and the
+          // egress recommendation is derived from it: keep it whenever upstream
+          // reports one (an absent field must not erase a captured value).
+          if (typeof info.locale === 'string' && info.locale !== '') target.locale = info.locale
           target.enabled = true
           target.verificationRequired = false
           target.verificationRequiredAt = undefined

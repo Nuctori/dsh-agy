@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { regionOfNode } from '../src/clash/region.ts'
+import { regionForLocale, regionOfNode } from '../src/clash/region.ts'
 
 describe('regionOfNode', () => {
   it('reads flag emoji labels', () => {
@@ -25,6 +25,21 @@ describe('regionOfNode', () => {
     expect(regionOfNode('♻️ 自动选择')).toBeUndefined()
     expect(regionOfNode('node-01')).toBeUndefined()
     expect(regionOfNode('')).toBeUndefined()
+  })
+
+  it('maps an account locale to the region it belongs in', () => {
+    expect(regionForLocale('hi')).toBe('IN')
+    expect(regionForLocale('ja')).toBe('JP')
+    expect(regionForLocale('en-GB')).toBe('GB')
+    expect(regionForLocale('en-US')).toBe('US')
+    expect(regionForLocale('zh-TW')).toBe('TW')
+    // Mainland China and Hong Kong are not served: the language default steps
+    // to a served neighbour instead of naming a forbidden region.
+    expect(regionForLocale('zh-CN')).toBe('TW')
+    expect(regionForLocale('zh-HK')).toBe('TW')
+    expect(regionForLocale('ru')).toBe('KZ')
+    expect(regionForLocale(undefined)).toBeUndefined()
+    expect(regionForLocale('')).toBeUndefined()
   })
 
   it('does not confuse a relay token with a country code', () => {
