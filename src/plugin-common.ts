@@ -237,7 +237,12 @@ async function buildAgyRuntime(ctx: Context): Promise<AgyRuntime> {
   const adapter = new AgyAdapter({
     getSession: (model, conversationKey) => sessions.getSession(model, undefined, conversationKey),
     reportFailure: (kind, session, info) => sessions.reportFailure(kind, session, info),
-    markSuccess: (session) => sessions.markSuccess(session),
+    markSuccess: (session) => {
+      // A completed turn is the only evidence of where this account belongs:
+      // pin that region so rotations stay in-country instead of drifting.
+      void clash.noteActiveRegion()
+      return sessions.markSuccess(session)
+    },
     resolveAttachments: () => ctx.get('attachments') as AgyAttachmentStore | undefined,
     noteRequestStarted: (account) => sessions.noteRequestStarted(account),
     noteRequestSettled: (account) => sessions.noteRequestSettled(account),

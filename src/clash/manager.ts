@@ -304,6 +304,28 @@ export class ClashManager {
     this.store.save(this.state)
   }
 
+  /**
+   * Remember the region of the node that just served a request successfully.
+   *
+   * `userinfo` exposes no locale (measured: id/email/name/picture only), so the
+   * account's own region cannot be read — it can only be OBSERVED. A region that
+   * completed a request is the strongest evidence available that this account
+   * belongs there, and pinning it is what keeps later rotations from drifting.
+   */
+  async noteActiveRegion(): Promise<void> {
+    if (this.child === undefined || this.state.group === '') return
+    try {
+      const group = await this.controller().group(this.state.group)
+      const region = regionOfNode(group.now)
+      if (region !== undefined && this.state.region !== region) {
+        this.state.region = region
+        this.store.save(this.state)
+      }
+    } catch {
+      // Best effort: this runs after a successful turn, not on the critical path.
+    }
+  }
+
   /** Status for the settings panel. Contains no credential material. */
   async status(): Promise<ClashStatus> {
     let nodes: string[] = []
