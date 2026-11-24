@@ -463,9 +463,12 @@ describe('translate', () => {
       generateOptions({ messages: messages as unknown as GenerateOptions['messages'] }),
       {},
     )
-    expect(body.request.systemInstruction).toEqual({ parts: [{ text: 'be terse' }] })
+    expect(body.request.systemInstruction).toBeUndefined()
     expect(body.request.contents).toHaveLength(1)
-    expect(body.request.contents[0]).toEqual({ role: 'user', parts: [{ text: 'hello' }] })
+    expect(body.request.contents[0]).toEqual({
+      role: 'user',
+      parts: [{ text: 'be terse\n\n' }, { text: 'hello' }],
+    })
   })
 
   it('keeps options.system ahead of the system-role message when both are present', () => {
@@ -480,7 +483,8 @@ describe('translate', () => {
       }),
       {},
     )
-    expect(body.request.systemInstruction).toEqual({ parts: [{ text: 'from options\n\nfrom history' }] })
+    expect(body.request.systemInstruction).toBeUndefined()
+    expect((body.request.contents[0]?.parts)[0]?.text).toBe('from options\n\nfrom history\n\n')
   })
 
   it('skips a developer message: tool bookkeeping is not a conversation turn', () => {
@@ -575,7 +579,8 @@ describe('translate', () => {
       }),
       {},
     )
-    expect(body.request.systemInstruction).toEqual({ parts: [{ text: 'be helpful' }] })
+    expect(body.request.systemInstruction).toBeUndefined()
+    expect((body.request.contents[0]?.parts)[0]?.text).toBe('be helpful\n\n')
     expect(body.request.tools).toEqual([{
       functionDeclarations: [{
         name: 't1',
@@ -3290,10 +3295,23 @@ describe('AgyAdapter', () => {
   })
 
   it('reports and throws QUOTA (terminal) on daily quota exhaustion', async () => {
+    // The terminal path now requires evidence of a spent window: a bare 429
+    // with no cache is indistinguishable from a fake one and must not cool.
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":{"status":"RESOURCE_EXHAUSTED"}}', { status: 429 })))
     const failures: Array<{ kind: string; session: AgyAccountSession }> = []
     const adapter = new AgyAdapter({
-      getSession: async () => session(),
+      // The terminal path requires EVIDENCE of a spent window: a bare 429 with no
+      // cache is indistinguishable from a fake one and must not cool the account.
+      getSession: async () => session({
+        account: {
+          email: 'a@b.c',
+          refresh: 'rt|p',
+          projectId: 'p',
+          addedAt: 0,
+          lastUsed: 0,
+          cachedQuota: { gemini: { remainingFraction: 0, resetTime: new Date(Date.now() + 3_600_000).toISOString() } },
+        } as never,
+      }),
       reportFailure: async (kind, s) => { failures.push({ kind, session: s }) },
     })
     await expect(async () => {
