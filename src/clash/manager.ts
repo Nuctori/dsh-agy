@@ -89,7 +89,21 @@ export class ClashManager {
     this.fetchImpl = options.fetchImpl ?? proxiedFetch
     this.controllerFor = options.controllerFor
       ?? ((port, secret) => new ClashController({ port, secret }))
-    this.spawnCore = options.spawnCore ?? ((bin, args) => spawn(bin, args, { stdio: 'ignore', windowsHide: true }))
+    this.spawnCore = options.spawnCore ?? ((bin, args) => {
+      const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+      // Keep a short tail of the core's own output: "exited before it became
+      // ready" with no reason is undiagnosable, and the core says exactly why it
+      // refused to start (bad config field, port in use, geodata failure).
+      const tail: string[] = []
+      this.coreTail = tail
+      const collect = (chunk: Buffer | string): void => {
+        tail.push(String(chunk))
+        while (tail.length > 40) tail.shift()
+      }
+      child.stdout?.on('data', collect)
+      child.stderr?.on('data', collect)
+      return child
+    })
     this.resolveCore = options.resolveCore ?? (() => resolveCoreBinary())
     this.now = options.now ?? (() => Date.now())
     this.state = this.store.load()
@@ -316,6 +330,15 @@ export class ClashManager {
 
   // ── internals ──
 
+  /** Tail of the core's own output, for the failure message. */
+  private coreTail: string[] = []
+
+  /** Last few lines the core printed, as a one-line hint (or ''). */
+  private coreTailHint(): string {
+    const text = this.coreTail.join('').trim().split('\n').slice(-3).join(' | ').trim()
+    return text === '' ? '' : ` — ${text}`
+  }
+
   private controller(): ClashController {
     return this.controllerFor(this.state.controllerPort, this.state.controllerSecret)
   }
@@ -390,7 +413,7 @@ export class ClashManager {
     const deadline = this.now() + CORE_READY_TIMEOUT_MS
     let lastError: unknown
     while (this.now() < deadline) {
-      if (this.child === undefined) throw new Error('core exited before it became ready')
+      if (this.child === undefined) throw new Error(`core exited before it became ready${this.coreTailHint()}`)
       try {
         await this.controller().version()
         return

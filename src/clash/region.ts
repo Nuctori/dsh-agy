@@ -50,6 +50,9 @@ export function regionOfNode(name: string): string | undefined {
  * is treated as usable.
  */
 const UNSUPPORTED_REGIONS: ReadonlySet<string> = new Set([
+  'HK', // Hong Kong — Google's AI surface is not offered here (measured: 400
+        // FAILED_PRECONDITION "User location is not supported for the API use")
+  'MO', // Macau
   'CN', // mainland China
   'RU', // Russia
   'IR', // Iran

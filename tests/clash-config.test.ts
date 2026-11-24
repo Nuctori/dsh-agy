@@ -94,10 +94,11 @@ describe('buildRuntimeConfig', () => {
     const filtered = buildRuntimeConfig({
       profile: parseSubscription([
         'proxies:',
-        '  - { name: "🇭🇰香港-A", type: http, server: 127.0.0.1, port: 1 }',
+        '  - { name: "🇯🇵日本-A", type: http, server: 127.0.0.1, port: 1 }',
         '  - { name: "🇷🇺俄罗斯-A", type: http, server: 127.0.0.1, port: 2 }',
+        '  - { name: "🇭🇰香港-A", type: http, server: 127.0.0.1, port: 3 }',
         'proxy-groups:',
-        '  - { name: 节点选择, type: select, proxies: ["🇭🇰香港-A", "🇷🇺俄罗斯-A"] }',
+        '  - { name: 节点选择, type: select, proxies: ["🇯🇵日本-A", "🇷🇺俄罗斯-A", "🇭🇰香港-A"] }',
         'rules:',
         '  - MATCH,节点选择',
       ].join('\n')),
@@ -107,10 +108,11 @@ describe('buildRuntimeConfig', () => {
     })
     const groups = filtered['proxy-groups'] as Array<Record<string, unknown>>
     const auto = groups.find((group) => group.name === 'agy-auto')
-    expect(auto?.proxies).toEqual(['🇭🇰香港-A'])
+    expect(auto?.proxies).toEqual(['🇯🇵日本-A'])
     // The selector keeps both so manual pinning still reaches the filtered node.
     const select = groups.find((group) => group.name === '节点选择')
     expect(select?.proxies).toContain('🇷🇺俄罗斯-A')
+    expect(select?.proxies).toContain('🇭🇰香港-A')
   })
 
   it('adds an auto group that probes the agy endpoint, and puts it first', () => {
