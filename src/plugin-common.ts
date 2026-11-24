@@ -258,6 +258,11 @@ async function buildAgyRuntime(ctx: Context): Promise<AgyRuntime> {
       // retry, which is the only retry this project allows.
       void clash.ensure().then(() => clash.rotate()).catch(() => {})
     },
+    onLocationRejected: () => {
+      // The route's country is not served: block it for good and move to a
+      // supported one. The account is untouched, and the host's retry re-sends.
+      void clash.rejectRegionAndRotate().catch(() => {})
+    },
     recordUsage: (record) => { stats.record({ ...record, source: 'chat' }) },
   })
   invalidateModelCache = () => { adapter.invalidateModelCache() }

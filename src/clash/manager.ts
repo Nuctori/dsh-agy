@@ -26,7 +26,7 @@ import { ClashController, subscriptionHostForDisplay } from './controller.ts'
 import { resolveCoreBinary } from './core.ts'
 import { ClashStore } from './store.ts'
 import { proxiedFetch } from '../proxy.ts'
-import { regionOfNode } from './region.ts'
+import { regionOfNode, isRegionSupported } from './region.ts'
 import {
   CORE_READY_TIMEOUT_MS,
   DEFAULT_CONTROLLER_PORT,
@@ -302,6 +302,47 @@ export class ClashManager {
     const region = regionOfNode(node)
     if (region !== undefined) this.state.region = region
     this.store.save(this.state)
+  }
+
+  /**
+   * Upstream refused the CURRENT route with "User location is not supported".
+   *
+   * That verdict is a fact about the route, not about the account, so the region
+   * is recorded as blocked for good and the next rotation leaves it — otherwise
+   * every later turn repeats the same 400 from the same country.
+   */
+  async rejectRegionAndRotate(): Promise<boolean> {
+    if (this.child === undefined || this.state.group === '') return false
+    try {
+      const controller = this.controller()
+      const group = await controller.group(this.state.group)
+      const rejected = regionOfNode(group.now) ?? regionOfNode(this.state.node)
+      if (rejected !== undefined && !this.state.blockedRegions.includes(rejected)) {
+        this.state.blockedRegions = [...this.state.blockedRegions, rejected]
+        // A rejected region cannot be the account's home either.
+        if (this.state.region === rejected) this.state.region = ''
+        this.store.save(this.state)
+      }
+      const measured = await this.probe().catch(() => undefined)
+      const candidates = (measured?.nodes ?? [])
+        .filter((node) => node.ms > 0)
+        .filter((node) => {
+          const region = regionOfNode(node.name)
+          if (region === undefined) return true
+          return isRegionSupported(region) && !this.state.blockedRegions.includes(region)
+        })
+      const next = candidates[0]?.name
+      if (next === undefined || next === group.now) return false
+      await controller.select(this.state.group, next)
+      this.state.node = next
+      const region = regionOfNode(next)
+      if (region !== undefined) this.state.region = region
+      this.store.save(this.state)
+      return true
+    } catch {
+      // Best effort: the caller is already failing the turn with a clear message.
+      return false
+    }
   }
 
   /**

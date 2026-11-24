@@ -143,6 +143,15 @@ export interface AgyAdapterOptions {
    * attempt still fails, per the "one DSH call, one provider attempt" rule.
    */
   onTransportFailure?(account: ManagedAccount, error: unknown): void
+  /**
+   * Upstream refused the egress REGION for this request (400 "User location is
+   * not supported").
+   *
+   * Distinct from a transport failure: the connection worked and the account is
+   * fine, but that country is not served. The owner should move the egress and
+   * the host's retry then lands on a supported region.
+   */
+  onLocationRejected?(account: ManagedAccount): void
   /** Resolve the harness attachment store; undefined outside the harness (standalone CLI). */
   resolveAttachments?(): AgyAttachmentStore | undefined
   /**
@@ -665,6 +674,17 @@ export class AgyAdapter extends LlmAdapter {
 
       if (!response.ok) {
         const classified = classifyHttpError(response.status, response.headers, bodyText)
+        // The route's country is refused, not the account: the same credentials
+        // work from a supported region. Move the egress and let the host's retry
+        // land on the new node — the account must NOT be cooled for this.
+        if (response.status === 400 && /user location is not supported/i.test(bodyText ?? '')) {
+          this.options.onLocationRejected?.(session.account)
+          throw new LlmError(
+            'agy rejected this egress region (400 User location is not supported) — switching node, the next attempt should land on a supported region',
+            'RATE_LIMIT',
+            { providerRetryAfterMs: 1_000, requestId: ProviderRequestId(generateAntigravityRequestId()) },
+          )
+        }
         // A "quota exhausted" 429 the account's own cache contradicts is
         // upstream's risk-control rejection wearing a quota label.
         if (classified.rateLimitCategory === 'quota_exhausted'

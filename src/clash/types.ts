@@ -34,6 +34,15 @@ export interface ClashState {
    * falls back to the current node's own region.
    */
   region: string
+  /**
+   * Regions upstream rejected for THIS account ("User location is not
+   * supported"), in the order they were rejected.
+   *
+   * Kept so a rotation never walks back into one, and so the auto group can skip
+   * them on the next start. A rejected region is a fact about the route, not a
+   * guess: the request itself was refused.
+   */
+  blockedRegions: string[]
   /** ISO timestamp of the last successful subscription fetch. */
   fetchedAt: string
   /** Cores that failed to start, so a broken download is not retried every turn. */
@@ -112,6 +121,7 @@ export function emptyClashState(): ClashState {
     autoRotate: true,
     node: '',
     region: '',
+    blockedRegions: [],
     fetchedAt: '',
     lastError: '',
   }

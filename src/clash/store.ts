@@ -24,6 +24,9 @@ function sanitize(raw: unknown): ClashState {
     return typeof value === 'number' && Number.isInteger(value) && value > 0 && value < 65_536 ? value : base[key] as number
   }
   const bool = (key: keyof ClashState): boolean => (typeof record[key] === 'boolean' ? record[key] as boolean : base[key] as boolean)
+  const regions = (): string[] => Array.isArray(record.blockedRegions)
+    ? record.blockedRegions.filter((region): region is string => typeof region === 'string' && region !== '')
+    : []
   return {
     enabled: bool('enabled'),
     subscriptionUrl: str('subscriptionUrl'),
@@ -34,6 +37,7 @@ function sanitize(raw: unknown): ClashState {
     autoRotate: bool('autoRotate'),
     node: str('node'),
     region: str('region'),
+    blockedRegions: regions(),
     fetchedAt: str('fetchedAt'),
     lastError: str('lastError'),
   }
