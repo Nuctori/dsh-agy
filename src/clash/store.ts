@@ -33,6 +33,7 @@ function sanitize(raw: unknown): ClashState {
     group: str('group'),
     autoRotate: bool('autoRotate'),
     node: str('node'),
+    region: str('region'),
     fetchedAt: str('fetchedAt'),
     lastError: str('lastError'),
   }

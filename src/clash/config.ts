@@ -9,6 +9,7 @@
  */
 
 import { parse, stringify } from 'yaml'
+import { isNodeUnsupported } from './region.ts'
 
 /** A parsed Clash profile, narrowed to the fields this plugin consumes. */
 export interface SubscriptionProfile {
@@ -194,12 +195,20 @@ export function withAutoGroup(
   // failover), and copying those would make the synthesized group reference the
   // selector that references it — a cycle mihomo silently drops, taking the
   // whole auto group with it.
-  const members = (target.proxies ?? []).filter(
+  const realNodes = (target.proxies ?? []).filter(
     (name) => name !== AUTO_GROUP && nodeNames.includes(name),
   )
+  // A node in a region the service is not offered in cannot work, and offering
+  // it repeatedly is itself a signal. Drop those from the AUTO group only: the
+  // manual list stays intact, and a profile with nothing else falls back to the
+  // unfiltered set rather than losing every node.
+  const supported = realNodes.filter((name) => !isNodeUnsupported(name))
+  const members = supported.length > 0 ? supported : realNodes
   if (members.length === 0) return groups
   if (groups.some((group) => group.name === AUTO_GROUP)) return groups
-  target.proxies = [AUTO_GROUP, ...members]
+  // The selector keeps EVERY real node (filtered ones included) so manual
+  // pinning still reaches them; only the auto group is restricted.
+  target.proxies = [AUTO_GROUP, ...realNodes]
   return [...groups, {
     name: AUTO_GROUP,
     type: 'url-test',

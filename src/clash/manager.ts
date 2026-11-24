@@ -215,10 +215,10 @@ export class ClashManager {
       const ranked = (measured?.nodes ?? []).filter((node) => node.ms > 0).map((node) => node.name)
       // Geography before speed: Google scores an account's LOCATION (current IP
       // plus its login history), so hopping countries on consecutive failures is
-      // the migration pattern the community reports before a soft block. Stay in
-      // the current node's region while it has a live alternative; only cross a
-      // border when it does not.
-      const region = regionOfNode(current.now)
+      // the migration pattern the community reports before a soft block. The
+      // pair to stay inside is the LEARNT region when there is one, otherwise the
+      // current node's own region.
+      const region = this.state.region !== '' ? this.state.region : regionOfNode(current.now)
       const sameRegion = region === undefined
         ? undefined
         : ranked.find((name) => name !== current.now && regionOfNode(name) === region)
@@ -275,6 +275,10 @@ export class ClashManager {
     if (this.state.group === '') throw new Error('no node group selected yet — start the proxy first')
     await this.controller().select(this.state.group, node)
     this.state.node = node
+    // Choosing a node is also choosing a location: remember it so every later
+    // rotation stays in that country instead of drifting on the next failure.
+    const region = regionOfNode(node)
+    if (region !== undefined) this.state.region = region
     this.store.save(this.state)
   }
 

@@ -25,6 +25,15 @@ export interface ClashState {
   autoRotate: boolean
   /** Node currently selected in {@link group}, for display and rotation cursor. */
   node: string
+  /**
+   * Region this account is pinned to (e.g. `HK`), learnt from the node the user
+   * chose or the last one that worked.
+   *
+   * Google scores an account's LOCATION, so once a region is known every
+   * rotation should stay inside it. Empty means "not learnt yet": rotation then
+   * falls back to the current node's own region.
+   */
+  region: string
   /** ISO timestamp of the last successful subscription fetch. */
   fetchedAt: string
   /** Cores that failed to start, so a broken download is not retried every turn. */
@@ -102,6 +111,7 @@ export function emptyClashState(): ClashState {
     group: '',
     autoRotate: true,
     node: '',
+    region: '',
     fetchedAt: '',
     lastError: '',
   }

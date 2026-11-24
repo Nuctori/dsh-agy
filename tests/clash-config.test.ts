@@ -88,6 +88,31 @@ describe('buildRuntimeConfig', () => {
     expect(config['tproxy-port']).toBeUndefined()
   })
 
+  it('keeps regions the service is not offered in out of the auto group', () => {
+    // A blocked region cannot work, and presenting it repeatedly is its own
+    // signal. The manual list stays intact; only the auto group is filtered.
+    const filtered = buildRuntimeConfig({
+      profile: parseSubscription([
+        'proxies:',
+        '  - { name: "🇭🇰香港-A", type: http, server: 127.0.0.1, port: 1 }',
+        '  - { name: "🇷🇺俄罗斯-A", type: http, server: 127.0.0.1, port: 2 }',
+        'proxy-groups:',
+        '  - { name: 节点选择, type: select, proxies: ["🇭🇰香港-A", "🇷🇺俄罗斯-A"] }',
+        'rules:',
+        '  - MATCH,节点选择',
+      ].join('\n')),
+      mixedPort: 47890,
+      controllerPort: 47891,
+      controllerSecret: 's3cret',
+    })
+    const groups = filtered['proxy-groups'] as Array<Record<string, unknown>>
+    const auto = groups.find((group) => group.name === 'agy-auto')
+    expect(auto?.proxies).toEqual(['🇭🇰香港-A'])
+    // The selector keeps both so manual pinning still reaches the filtered node.
+    const select = groups.find((group) => group.name === '节点选择')
+    expect(select?.proxies).toContain('🇷🇺俄罗斯-A')
+  })
+
   it('adds an auto group that probes the agy endpoint, and puts it first', () => {
     const groups = config['proxy-groups'] as Array<Record<string, unknown>>
     const auto = groups.find((group) => group.name === 'agy-auto')

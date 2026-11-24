@@ -15,8 +15,7 @@
  */
 
 const REGION_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/🇭🇰|香港|\bhk\b|hong ?kong/i, 'HK'],
-  [/🇯🇵|日本|东京|大阪|\bjp\b|japan|tokyo|osaka/i, 'JP'],
+  [/🇭🇰|香港|\bhk\b|hong ?kong/i, 'HK'],  [/🇯🇵|日本|东京|大阪|\bjp\b|japan|tokyo|osaka/i, 'JP'],
   [/🇸🇬|新加坡|狮城|\bsg\b|singapore/i, 'SG'],
   [/🇺🇸|美国|西美|美西|\bus\b|usa|united states|america|los angeles|seattle/i, 'US'],
   [/🇬🇧|英国|伦敦|\buk\b|united kingdom|london/i, 'GB'],
@@ -39,4 +38,34 @@ export function regionOfNode(name: string): string | undefined {
     if (pattern.test(name)) return region
   }
   return undefined
+}
+
+/**
+ * Regions where the Antigravity/Gemini surface is NOT offered.
+ *
+ * A node in one of these does not merely perform badly: the request is rejected
+ * on availability grounds, and repeatedly presenting a blocked region for an
+ * account is itself a signal. The list is the conservative intersection of the
+ * regions Google's consumer AI surface does not serve; anything not named here
+ * is treated as usable.
+ */
+const UNSUPPORTED_REGIONS: ReadonlySet<string> = new Set([
+  'CN', // mainland China
+  'RU', // Russia
+  'IR', // Iran
+  'KP', // North Korea
+  'SY', // Syria
+  'CU', // Cuba
+  'BY', // Belarus
+])
+
+/** Whether a region code is served at all. Unknown labels are NOT filtered. */
+export function isRegionSupported(region: string | undefined): boolean {
+  if (region === undefined) return true
+  return !UNSUPPORTED_REGIONS.has(region)
+}
+
+/** Whether a node label names a region that is not served. */
+export function isNodeUnsupported(name: string): boolean {
+  return !isRegionSupported(regionOfNode(name))
 }

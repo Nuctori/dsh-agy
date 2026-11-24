@@ -240,6 +240,46 @@ describe('ClashManager lifecycle', () => {
     expect(selected.at(-1)).toBe(nodes[1])
   })
 
+  it('remembers the region the user picked and keeps rotation inside it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agy-pin-'))
+    const nodes = ['🇭🇰香港-A', '🇭🇰香港-B', '🇯🇵日本-A']
+    const selected: string[] = []
+    let current = nodes[0]!
+    const controller = new ClashController({
+      port: 1,
+      secret: 's',
+      fetchImpl: (async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input)
+        if (init?.method === 'PUT') {
+          current = (JSON.parse(String(init.body)) as { name: string }).name
+          selected.push(current)
+          return new Response('{}')
+        }
+        if (url.endsWith('/version')) return new Response(JSON.stringify({ version: '1.19.34' }))
+        if (url.includes('/group/') && url.includes('/delay')) {
+          return new Response(JSON.stringify({ [nodes[0]!]: 400, [nodes[1]!]: 300, [nodes[2]!]: 20 }))
+        }
+        if (url.includes('/proxies/')) return new Response(JSON.stringify({ now: current, all: nodes }))
+        return new Response('{}')
+      }) as typeof fetch,
+    })
+    const manager = new ClashManager({
+      stateFile: join(dir, 'state.json'),
+      configFile: join(dir, 'config.yaml'),
+      resolveCore: async () => '/fake/mihomo',
+      spawnCore: () => fakeCore(),
+      controllerFor: () => controller,
+      fetchImpl: (async () => new Response(PROFILE)) as typeof fetch,
+    })
+    manager.configure({ enabled: true, subscriptionUrl: 'https://sub.example/tok', autoRotate: true })
+    await manager.ensure()
+    await manager.select(nodes[1]!)
+    expect(manager.snapshot().region).toBe('HK')
+    // Japan measures 20ms; the pinned region still wins.
+    await manager.rotate()
+    expect(selected.at(-1)).toBe(nodes[0])
+  })
+
   it('serves restarts from the cached profile and only re-fetches on explicit refresh', async () => {    const h = harness({ enabled: true, subscriptionUrl: 'https://sub.example/tok' })
     await h.manager.ensure()
     expect(h.fetches()).toBe(1)
