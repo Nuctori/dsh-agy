@@ -1568,6 +1568,14 @@ function ProxyTab(props: { rpc: AgyRpcClient, t: T }): ReactNode {
               total: probe.total,
               best: probe.best?.name ?? '—',
             }))),
+        // Per-node latency, not just the summary: "which nodes are actually
+        // reachable from here, and how fast" is the question a failing turn
+        // raises, and the aggregate cannot answer it.
+        probe === null
+          ? null
+          : h('div', { className: 'agy-hint' },
+            probe.nodes.slice(0, 12).map((node) => h('div', { key: node.name },
+              `${node.name} · ${node.ms > 0 ? `${node.ms}ms` : t('proxyProbeUnavailable')}`))),
         h(Switch, {
           label: t('proxyAutoRotate'),
           checked: status?.autoRotate === true,

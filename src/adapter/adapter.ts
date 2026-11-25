@@ -668,6 +668,9 @@ export class AgyAdapter extends LlmAdapter {
     const MAX_MALFORMED_RETRIES = 3
 
     for (let malformedAttempt = 0; ; malformedAttempt++) {
+      // Did anything reach the consumer? A turn that fails before this point can
+      // be replayed safely; after it, replaying would duplicate output.
+      let deliveredAny = false
       await this.throttle(session)
       const attemptStartedAt = Date.now()
       const { response, bodyText } = await sendAttempt(attemptStartedAt)
@@ -832,8 +835,7 @@ export class AgyAdapter extends LlmAdapter {
 
       try {
         let actualModelVersion: string | undefined
-        for await (const chunk of parseAgySse(response.body, {
-          signal: options.signal,
+        for await (const chunk of parseAgySse(response.body, {          signal: options.signal,
           disambiguateToolCallIds: true,
           onToolSignature: (toolCallId, signature) => {
             pendingSignatures.push([toolCallId, signature])
@@ -857,6 +859,7 @@ export class AgyAdapter extends LlmAdapter {
             // after the first `text-delta`, so a mid-body death must not cost the
             // consumer a signature it was already delivered.
             if (pendingSignatures.length !== 0) commitSignatures()
+            deliveredAny = true
             yield chunk
           } else if (chunk.type === 'text-delta') {
             yieldedDirect = true
@@ -867,6 +870,7 @@ export class AgyAdapter extends LlmAdapter {
             // wait by the whole thinking period.
             ttftMs = Date.now() - attemptStartedAt
             for (const buffered of drainBuffer()) yield buffered
+            deliveredAny = true
             yield chunk
           } else {
             bufferedChunks.push(chunk)
@@ -951,6 +955,21 @@ export class AgyAdapter extends LlmAdapter {
         // hit; request-error is a no-op at account level. DSH sees a terminal
         // UPSTREAM error either way (below).
         const unmappedFinish = error instanceof UnmappedFinishReasonError
+        // Nothing reached the consumer yet: the request failed BEFORE the turn
+        // started, so replaying it is safe — and the common cause here is a node
+        // that accepted the connection and then dropped it. Report it as a
+        // transport failure (retryable, moves the egress) instead of the terminal
+        // UPSTREAM verdict, and do NOT cool the account: the account is fine.
+        if (!deliveredAny && !unmappedFinish) {
+          this.options.onTransportFailure?.(session.account, error)
+          this.recordUsage(session, options.model, { ok: false, reason: 'network-error' }, attemptStartedAt)
+          await response.body?.cancel().catch(() => {})
+          throw new LlmError(
+            error instanceof Error ? describeFetchError(error) : 'agy stream failed before any output',
+            'TRANSPORT',
+            { cause: error },
+          )
+        }
         await this.options.reportFailure(unmappedFinish ? 'request-error' : 'network-error', session)
         // `usage` is defined here exactly when the stream died with an unmapped
         // finishReason or the idle watchdog fired: `parseAgySse` flushes its

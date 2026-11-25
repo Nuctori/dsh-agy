@@ -300,6 +300,7 @@ export const zh = {
   proxyNoNodes: '内核启动后显示节点列表。',
   proxyProbe: '测速',
   proxyProbeResult: '可用 {available}/{total} · 最优 {best}',
+  proxyProbeUnavailable: '不可用',
   proxyError: '内核错误：{message}',
 } satisfies Record<string, string>
 
@@ -573,5 +574,6 @@ export const en: Record<AgyLocaleKey, string> = {
   proxyNoNodes: 'The node list appears once the core is running.',
   proxyProbe: 'Test nodes',
   proxyProbeResult: '{available}/{total} reachable · best {best}',
+  proxyProbeUnavailable: 'unreachable',
   proxyError: 'Core error: {message}',
 }
