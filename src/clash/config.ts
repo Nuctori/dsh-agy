@@ -9,7 +9,7 @@
  */
 
 import { parse, stringify } from 'yaml'
-import { isNodeUnsupported } from './region.ts'
+import { isNodeUsable } from './region.ts'
 
 /** A parsed Clash profile, narrowed to the fields this plugin consumes. */
 export interface SubscriptionProfile {
@@ -23,6 +23,8 @@ export interface RuntimeConfigInput {
   mixedPort: number
   controllerPort: number
   controllerSecret: string
+  /** Regions upstream already refused for this account; excluded from the auto group. */
+  blockedRegions?: readonly string[]
 }
 
 /** A group the panel can pin agy to: selectors are the only switchable kind. */
@@ -138,7 +140,12 @@ export function buildRuntimeConfig(input: RuntimeConfigInput): Record<string, un
   if (!rules.some((r) => r.trim().toUpperCase().startsWith('MATCH,'))) {
     rules.push(`MATCH,${group?.name ?? (profile.proxies[0]?.name ?? 'DIRECT')}`)
   }
-  const groups = withAutoGroup(profile.groups, group?.name ?? '', profile.proxies.map((proxy) => proxy.name))
+  const groups = withAutoGroup(
+    profile.groups,
+    group?.name ?? '',
+    profile.proxies.map((proxy) => proxy.name),
+    input.blockedRegions ?? [],
+  )
   return {
     'mixed-port': mixedPort,
     'allow-lan': false,
@@ -187,6 +194,7 @@ export function withAutoGroup(
   groups: SubscriptionProfile['groups'],
   selectName: string,
   nodeNames: readonly string[],
+  blockedRegions: readonly string[] = [],
 ): SubscriptionProfile['groups'] {
   if (selectName === '') return groups
   const target = groups.find((group) => group.name === selectName)
@@ -198,12 +206,12 @@ export function withAutoGroup(
   const realNodes = (target.proxies ?? []).filter(
     (name) => name !== AUTO_GROUP && nodeNames.includes(name),
   )
-  // A node in a region the service is not offered in cannot work, and offering
-  // it repeatedly is itself a signal. Drop those from the AUTO group only: the
-  // manual list stays intact, and a profile with nothing else falls back to the
-  // unfiltered set rather than losing every node.
-  const supported = realNodes.filter((name) => !isNodeUnsupported(name))
-  const members = supported.length > 0 ? supported : realNodes
+  // A region the service does not serve, or one upstream already REFUSED for
+  // this account, cannot work — and it is regenerated on every start, so the
+  // filter has to live here too, not only in the rotation code. The manual list
+  // keeps everything; a profile with nothing else falls back to the full set.
+  const usable = realNodes.filter((name) => isNodeUsable(name, blockedRegions))
+  const members = usable.length > 0 ? usable : realNodes
   if (members.length === 0) return groups
   if (groups.some((group) => group.name === AUTO_GROUP)) return groups
   // The selector keeps EVERY real node (filtered ones included) so manual

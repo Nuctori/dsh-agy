@@ -74,6 +74,21 @@ export function isNodeUnsupported(name: string): boolean {
 }
 
 /**
+ * Whether a node can serve a turn at all: its region is served AND upstream has
+ * not already refused that region for this account.
+ *
+ * One predicate for every selection path — picking the first node, rotating after
+ * a failure, and synthesizing the auto group. They drifted apart before, and each
+ * drift produced the same symptom: the plugin confidently chose a country the
+ * account cannot use.
+ */
+export function isNodeUsable(name: string, blockedRegions: readonly string[] = []): boolean {
+  const region = regionOfNode(name)
+  if (region === undefined) return true
+  return isRegionSupported(region) && !blockedRegions.includes(region)
+}
+
+/**
  * Locale → the region an account probably belongs in.
  *
  * Google exposes no location, but `userinfo.locale` is a strong hint (`hi` ⇒

@@ -15,10 +15,10 @@ import { ClashManager, type CoreProcessLike } from '../src/clash/manager.ts'
 
 const PROFILE = `
 proxies:
-  - { name: hk-01, type: ss, server: 1.1.1.1, port: 443, cipher: aes-128-gcm, password: p }
-  - { name: jp-01, type: ss, server: 2.2.2.2, port: 443, cipher: aes-128-gcm, password: p }
+  - { name: node-a, type: ss, server: 1.1.1.1, port: 443, cipher: aes-128-gcm, password: p }
+  - { name: node-b, type: ss, server: 2.2.2.2, port: 443, cipher: aes-128-gcm, password: p }
 proxy-groups:
-  - { name: 鑺傜偣閫夋嫨, type: select, proxies: [hk-01, jp-01] }
+  - { name: 鑺傜偣閫夋嫨, type: select, proxies: [node-a, node-b] }
 rules:
   - MATCH,鑺傜偣閫夋嫨
 `
@@ -60,11 +60,11 @@ function harness(overrides: { enabled?: boolean, subscriptionUrl?: string, now?:
       }
       if (url.endsWith('/version')) return new Response(JSON.stringify({ version: '1.19.34' }))
       if (url.includes('/proxies/') && !url.includes('/delay')) {
-        return new Response(JSON.stringify({ now: selected.at(-1) ?? 'hk-01', all: ['hk-01', 'jp-01'] }))
+        return new Response(JSON.stringify({ now: selected.at(-1) ?? 'node-a', all: ['node-a', 'node-b'] }))
       }
       if (url.includes('/group/') && url.includes('/delay')) {
-        // jp-01 is faster: rotation must prefer a MEASURED node over list order.
-        return new Response(JSON.stringify({ 'hk-01': 120, 'jp-01': 40 }))
+        // node-b is faster: rotation must prefer a MEASURED node over list order.
+        return new Response(JSON.stringify({ 'node-a': 120, 'node-b': 40 }))
       }
       return new Response(JSON.stringify({}))
     }) as typeof fetch,
@@ -116,7 +116,7 @@ describe('ClashManager lifecycle', () => {
     const config = readFileSync(h.configFile, 'utf8')
     expect(config).toContain('allow-lan: false')
     expect(config).toContain('mixed-port:')
-    expect(config).toContain('hk-01')
+    expect(config).toContain('node-a')
   })
 
   it('persists the state file owner-only', async () => {
@@ -143,13 +143,13 @@ describe('ClashManager lifecycle', () => {
     const h = harness({ enabled: true, subscriptionUrl: 'https://sub.example/tok', now: () => clock })
     await h.manager.ensure()
     await h.manager.rotate()
-    expect(h.selected.at(-1)).toBe('jp-01')
+    expect(h.selected.at(-1)).toBe('node-b')
     clock += 1_000
     await h.manager.rotate()
     expect(h.selected).toHaveLength(1)
     clock += 10_000
     await h.manager.rotate()
-    expect(h.selected.at(-1)).toBe('hk-01')
+    expect(h.selected.at(-1)).toBe('node-a')
   })
 
   it('probes the auto group against the agy endpoint and reports availability', async () => {
@@ -158,17 +158,17 @@ describe('ClashManager lifecycle', () => {
     const probe = await h.manager.probe()
     expect(probe.total).toBe(2)
     expect(probe.available).toBe(2)
-    expect(probe.best?.name).toBe('jp-01')
+    expect(probe.best?.name).toBe('node-b')
   })
 
   it('rotates to the fastest MEASURED node, not simply the next in the list', async () => {
     // When the selector currently rides the auto group, "next in list" is
-    // meaningless 鈥?there is no index. Order is jp-01 (40ms) then hk-01.
+    // meaningless 鈥?there is no index. Order is node-b (40ms) then node-a.
     const h = harness({ enabled: true, subscriptionUrl: 'https://sub.example/tok' })
     await h.manager.ensure()
     h.manager.select('鈾伙笍 鑷姩閫夋嫨').catch(() => {})
     await h.manager.rotate()
-    expect(h.selected.at(-1)).toBe('jp-01')
+    expect(h.selected.at(-1)).toBe('node-b')
   })
 
   it('moves to free loopback ports when the configured ones are taken', async () => {
@@ -203,7 +203,7 @@ describe('ClashManager lifecycle', () => {
     // that precedes a soft block. A live same-region node wins even when the
     // cross-border one measures faster.
     const dir = mkdtempSync(join(tmpdir(), 'agy-region-'))
-    const nodes = ['🇭🇰香港-A', '🇭🇰香港-B', '🇯🇵日本-A']
+    const nodes = ['🇯🇵日本-A', '🇯🇵日本-B', '🇸🇬新加坡-A']
     const selected: string[] = []
     let current = nodes[0]!
     const controller = new ClashController({
@@ -242,7 +242,7 @@ describe('ClashManager lifecycle', () => {
 
   it('remembers the region the user picked and keeps rotation inside it', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'agy-pin-'))
-    const nodes = ['🇭🇰香港-A', '🇭🇰香港-B', '🇯🇵日本-A']
+    const nodes = ['🇯🇵日本-A', '🇯🇵日本-B', '🇸🇬新加坡-A']
     const selected: string[] = []
     let current = nodes[0]!
     const controller = new ClashController({
@@ -274,7 +274,7 @@ describe('ClashManager lifecycle', () => {
     manager.configure({ enabled: true, subscriptionUrl: 'https://sub.example/tok', autoRotate: true })
     await manager.ensure()
     await manager.select(nodes[1]!)
-    expect(manager.snapshot().region).toBe('HK')
+    expect(manager.snapshot().region).toBe('JP')
     // Japan measures 20ms; the pinned region still wins.
     await manager.rotate()
     expect(selected.at(-1)).toBe(nodes[0])

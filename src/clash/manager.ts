@@ -26,7 +26,7 @@ import { ClashController, subscriptionHostForDisplay } from './controller.ts'
 import { resolveCoreBinary } from './core.ts'
 import { ClashStore } from './store.ts'
 import { proxiedFetch } from '../proxy.ts'
-import { regionOfNode, isRegionSupported } from './region.ts'
+import { isNodeUsable, regionOfNode } from './region.ts'
 import {
   CORE_READY_TIMEOUT_MS,
   DEFAULT_CONTROLLER_PORT,
@@ -165,6 +165,7 @@ export class ClashManager {
         mixedPort: this.state.mixedPort || DEFAULT_MIXED_PORT,
         controllerPort: this.state.controllerPort || DEFAULT_CONTROLLER_PORT,
         controllerSecret: this.state.controllerSecret,
+        blockedRegions: this.state.blockedRegions,
       })
       mkdirSync(dirname(this.configFile), { recursive: true })
       // 0600: the generated config embeds the subscription's node credentials.
@@ -234,7 +235,12 @@ export class ClashManager {
       // evidence of which node currently answers, so prefer it and fall back to
       // list order only when the probe says nothing.
       const measured = await this.probe().catch(() => undefined)
-      const ranked = (measured?.nodes ?? []).filter((node) => node.ms > 0).map((node) => node.name)
+      const ranked = (measured?.nodes ?? [])
+        .filter((node) => node.ms > 0)
+        .map((node) => node.name)
+        // A rejected or unserved region must never be a candidate, including the
+        // cross-region fallback below.
+        .filter((name) => isNodeUsable(name, this.state.blockedRegions))
       // Geography before speed: Google scores an account's LOCATION (current IP
       // plus its login history), so hopping countries on consecutive failures is
       // the migration pattern the community reports before a soft block. The
@@ -247,8 +253,12 @@ export class ClashManager {
       const next = sameRegion
         ?? ranked.find((name) => name !== current.now)
         ?? (() => {
-          const index = current.all.indexOf(current.now)
-          return current.all[(index + 1 + current.all.length) % current.all.length]
+          // List order is the last resort, and it must skip the same regions: a
+          // subscription's first node is very often Hong Kong.
+          const usable = current.all.filter((name) => isNodeUsable(name, this.state.blockedRegions))
+          const pool = usable.length > 0 ? usable : current.all
+          const index = pool.indexOf(current.now)
+          return pool[(index + 1 + pool.length) % pool.length]
         })()
       if (next === undefined || next === current.now) return false
       await controller.select(group, next)
@@ -326,11 +336,7 @@ export class ClashManager {
       const measured = await this.probe().catch(() => undefined)
       const candidates = (measured?.nodes ?? [])
         .filter((node) => node.ms > 0)
-        .filter((node) => {
-          const region = regionOfNode(node.name)
-          if (region === undefined) return true
-          return isRegionSupported(region) && !this.state.blockedRegions.includes(region)
-        })
+        .filter((node) => isNodeUsable(node.name, this.state.blockedRegions))
       const next = candidates[0]?.name
       if (next === undefined || next === group.now) return false
       await controller.select(this.state.group, next)
@@ -392,15 +398,11 @@ export class ClashManager {
       // Which entries the panel must mark as unusable, and why: a region the
       // service does not serve, or one upstream already refused for this
       // account. Picking either is a guaranteed failed turn.
-      nodeOptions: nodes.map((name) => {
-        const region = regionOfNode(name)
-        const consensus = region !== undefined && this.state.blockedRegions.includes(region)
-        return {
-          name,
-          region: region ?? '',
-          usable: region === undefined ? true : (isRegionSupported(region) && !consensus),
-        }
-      }),
+      nodeOptions: nodes.map((name) => ({
+        name,
+        region: regionOfNode(name) ?? '',
+        usable: isNodeUsable(name, this.state.blockedRegions),
+      })),
       fetchedAt: this.state.fetchedAt,
       lastError: this.state.lastError,
     }
@@ -523,13 +525,14 @@ export class ClashManager {
     const controller = this.controller()
     const live = await controller.group(group.name).catch(() => ({ now: '', all: group.nodes }))
     const explicit = this.state.node !== '' && live.all.includes(this.state.node) ? this.state.node : undefined
+    const usableNodes = live.all.filter((name) => isNodeUsable(name, this.state.blockedRegions))
     const suggested = this.recommendedRegion?.()
     const suggestedNode = suggested === undefined
       ? undefined
-      : live.all.find((name) => regionOfNode(name) === suggested)
+      : usableNodes.find((name) => regionOfNode(name) === suggested)
     // Preference: the node the user pinned, then the account's own region, then
-    // the provider's first live node.
-    const wanted = explicit ?? suggestedNode ?? (live.all[0] ?? '')
+    // the first USABLE node — a subscription usually lists Hong Kong first.
+    const wanted = explicit ?? suggestedNode ?? (usableNodes[0] ?? live.all[0] ?? '')
     if (wanted !== '') {
       if (live.now !== wanted) await controller.select(group.name, wanted)
       this.state.node = wanted
