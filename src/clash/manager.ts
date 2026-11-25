@@ -389,6 +389,18 @@ export class ClashManager {
       node,
       autoRotate: this.state.autoRotate,
       nodes,
+      // Which entries the panel must mark as unusable, and why: a region the
+      // service does not serve, or one upstream already refused for this
+      // account. Picking either is a guaranteed failed turn.
+      nodeOptions: nodes.map((name) => {
+        const region = regionOfNode(name)
+        const consensus = region !== undefined && this.state.blockedRegions.includes(region)
+        return {
+          name,
+          region: region ?? '',
+          usable: region === undefined ? true : (isRegionSupported(region) && !consensus),
+        }
+      }),
       fetchedAt: this.state.fetchedAt,
       lastError: this.state.lastError,
     }

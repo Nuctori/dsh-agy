@@ -1556,7 +1556,14 @@ function ProxyTab(props: { rpc: AgyRpcClient, t: T }): ReactNode {
                 const node = event.target.value
                 run(() => rpc.call('clash.select', { node }))
               },
-            }, nodes.map((node) => h('option', { key: node, value: node }, node))))),
+            }, (status?.nodeOptions ?? nodes.map((name) => ({ name, region: '', usable: true })))
+              .map((option) => h('option', {
+                key: option.name,
+                value: option.name,
+                // A refused or unserved region is a guaranteed failed turn, so it is
+                // marked in the list rather than looking like every other entry.
+                disabled: !option.usable,
+              }, option.usable ? option.name : `${option.name} · ${t('proxyProbeUnavailable')}`))))),
         h('div', { className: 'agy-rowactions' },
           // On demand, never on a timer: mihomo already re-probes the group on
           // its own interval, so a second poll would be a second source of truth.

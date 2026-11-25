@@ -75,6 +75,14 @@ export interface ClashStatus {
   node: string
   autoRotate: boolean
   nodes: string[]
+  /**
+   * Per-node usability for the picker.
+   *
+   * A node whose region the service does not serve, or one upstream already
+   * refused for this account, is a guaranteed failed turn — the panel marks it
+   * instead of letting it look identical to a working entry.
+   */
+  nodeOptions: Array<{ name: string, region: string, usable: boolean }>
   fetchedAt: string
   lastError: string
 }
