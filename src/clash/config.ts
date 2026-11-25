@@ -116,8 +116,15 @@ export const AUTO_GROUP = 'agy-auto'
 export const AUTO_PROBE_URL = 'https://cloudcode-pa.googleapis.com/'
 export const AUTO_PROBE_EXPECTED_STATUS = 404
 
-/** Per-node probe interval, in seconds. */
-export const AUTO_PROBE_INTERVAL_S = 120
+/**
+ * Per-node probe interval, in seconds.
+ *
+ * Five minutes, not two: a 26-node profile probing every 120s is ~19k requests a
+ * day against Google's front door from one IP — traffic nobody asked for, and
+ * the kind of regularity that reads as automation. A dead node is still caught
+ * well inside a single turn because rotation probes on demand.
+ */
+export const AUTO_PROBE_INTERVAL_S = 300
 
 /**
  * Build the runtime config document.
